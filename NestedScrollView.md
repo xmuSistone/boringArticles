@@ -1,5 +1,5 @@
 NestedScrollView 源码解析
-
+=========
 ###1. 序言
 既然主题是NestedScrollView，你是不是应该知道它的名字中为什么含有Nested呢？”Nested”翻译成中文是”嵌套的、内装的”。NestedScrollView既然是被内嵌的View，则它应该会跟其它的view勾勾搭搭，扯不清关系吧。同时，名字中含有ScrollView这么熟悉的单词，则，它应该能跟我们熟悉的ScrollView一样，实现滑动和Fling效果吧。<br><br>
 用过NestedScrollView的同学都已知道，NestedScrollView和CoordinatorLayout若是勾搭在一起，能实现视差滑动的效果。如果NestedScrollView独立成行，则它能实现跟ScrollView一样的功能。<br><br>
