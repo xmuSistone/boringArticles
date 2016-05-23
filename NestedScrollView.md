@@ -1,4 +1,6 @@
-###序言
+NestedScrollView 源码解析
+
+###1. 序言
 既然主题是NestedScrollView，你是不是应该知道它的名字中为什么含有Nested呢？”Nested”翻译成中文是”嵌套的、内装的”。NestedScrollView既然是被内嵌的View，则它应该会跟其它的view勾勾搭搭，扯不清关系吧。同时，名字中含有ScrollView这么熟悉的单词，则，它应该能跟我们熟悉的ScrollView一样，实现滑动和Fling效果吧。<br><br>
 用过NestedScrollView的同学都已知道，NestedScrollView和CoordinatorLayout若是勾搭在一起，能实现视差滑动的效果。如果NestedScrollView独立成行，则它能实现跟ScrollView一样的功能。<br><br>
 NestesdScrollView是什么？<br>
@@ -32,15 +34,15 @@ NestesdScrollView是什么？<br>
 就这么随意地在layout文件中写了这些，操作系统将依次调用：构造函数-->addView-->onMeasure-->onLayout.<br><br>
 构造函数，无非就是将xml中定义的一些属性取出来，作为全局变量保存一下。然后对滑动相关的参数和工具类做一些初始化的工作，比如ViewConfiguration参数、ScrollerCompat、NestedScrollingParentHelper、NestedScrollingChildHelper等等。NestedXXXHelper看不懂没关系，你只需知道他们在构造函数中就已经存在就好了。构造函数之后，接下来的addView/onMeasure/onLayout咱们暂时抛开不谈，毕竟网上关于viewgroup绘制过程分析的文章已经满天飞了。<br><br>
 本文的重心是NestedScrollView的滑动功能，NestedScrollView的滑动过程一定与DispatchTouchEvent、OnInterceptTouchEvent和OnTouchEvent息息相关。如果你不理解touch的分发、拦截、传递、消费机制，请先学习一下这个：[Android事件传递机制分析](http://wuxiaolong.me/2015/12/19/MotionEvent/)。否则，接下来的源码分析你可能会跌入云里雾里。<br>
-### 躲不掉的Touch分发和拦截
-我们知道MotionEvent的dispatch和intercept是由上往下，由parent传递给child。一旦中间返回true，MotionEvent中断，便无法再向下传递。而MotionEvent的消费是由下往上，如果child的OnTouchEvent消费掉MotionEvent，则MotionEvent无法再向上传递，parent就再无机会消费这个Touch事件了。此处我有一个问题：一个ViewGroup的onTouchEvent总是返回true，而且这个ViewGroup的子View从来没有调用过requestDisallowInterceptTouchEvent，那么这个ViewGroup的onInterceptTouchEvent能否收到连续的ACTION_MOVE事件?<br><br>
-答案应该是不能。<br><br>
+###2. 躲不掉的Touch分发和拦截
+我们知道MotionEvent的dispatch和intercept是由上往下，由parent传递给child。一旦中间返回true，MotionEvent中断，便无法再向下传递。而MotionEvent的消费是由下往上，如果child的OnTouchEvent消费掉MotionEvent，则MotionEvent无法再向上传递，parent就再无机会消费这个Touch事件了。此处我有一个问题：一个ViewGroup的onTouchEvent总是返回true，那么这个ViewGroup的onInterceptTouchEvent能否收到连续的ACTION_MOVE事件?<br><br>
+答案应该是<b>不能</b>。<br><br>
 我在NestedScrollView里面填入了若干个TextView，NestedScrollView的onInterceptTouchEvent函数收不到任何一个ACTION_MOVE事件。<br><br>
 我在NestedScrollView里面的第一个TextView加上了clickable="true"的属性，我手指按下第三个TextView开始拖动，onInterceptTouchEvent也收不到任何一个ACTION_MOVE时间。<br><br>
 我按下了NestedScrollView里面第一个clickable的TextView，onInterceptTouchEvent收到了ACTION_MOVE事件。但是ACTION_MOVE事件第二次的时候，onInterceptTouchEvent返回了true，然后就再也收不到MotionEvent事件了。<br><br>
 所以，这个例子包含了MotionEvent传递的细节。如果子View没有消费掉ViewGroup的ACTION_DOWN事件，那这个ViewGroup在onInterceptTouchEvent收不到任何的ACTION_MOVE事件，所有的MotionEvent都会抛给ViewGroup的OnTouchEvent去处理。<br><br>
 更近一步的理解应该是这样：一个view一旦不消费某个MotionEvent，后续的MotionEvent序列都不会再传递给这个view去处理了，直到下一次ACTION_DOWN事件，与此同时，上一级parentView的onInterceptTouchEvent就不会再调用了，因为子View不消费MotionEvent，parent还拦截个啥呢？<br>
-### NestedScrollView之ScrollView
+###3. NestedScrollView之ScrollView
 言归正传，NestedScrollView具备滑动功能，此处你需要知道的是：NestedScrollView的父类是FrameLayout，FrameLayout对TouchEvent的处理没有任何定制，FrameLayout所有的TouchEvent处理都交给了它的父类ViewGroup。NestedScrollView对TouchEvent的两个入口做了定制：onInterceptTouchEvent和onTouchEvent。<br><br>
 先看一下onInterceptTouchEvent，这个函数的字面意思是：Touch事件拦截。<br><br>
 ```java
@@ -283,7 +285,7 @@ public boolean onTouchEvent(MotionEvent ev) {
 上述的代码中，ACTION_MOVE实现scroll滑动功能比较隐晦，在一个if语句中，一方面做了是否OverScroll的判断，另一方面又做了scrollTo的工作。在ACTION_UP的代码段中，NestedScrollView根据当前的滑动速度，使用mScroller将NestedScrollView的元素fling到目标位置。<br><br>
 NestedScrollView的滑动功能，应该大致如此了。有些细节的知识点，限于篇幅问题，我并没有跟进去一探究竟。<br><br>
 然而NestedScrollView，这个单词一分为二是Nested和ScrollView，上面的一坨分析是有关ScrollView的，却一直回避了这个更靠前的单词：Nested。不过，还好我们之前做了一个铺垫。<br>
-### NestedScrollView之Nested
+###4. NestedScrollView之Nested
 还记得前面我们跟到了mChildHelper.startNestedScroll函数么，那个函数的主要工作就是要找到一个支持nested功能的mNestedScrollingParent。哦，其实应该是ancestorView。明眼人掐指一算，这个支持nested功能的view不就是我们熟悉的CoordinatorLayout么？此处，我们先建立一个大前提，layout文件中我们让NestedScrollView支持视差，使用CoordinatorLayout和AppbarLayout，xml如下：<br><br>
 ```xml
 <android.support.design.widget.CoordinatorLayout xmlns:android="http://schemas.android.com/apk/res/android"
@@ -452,7 +454,7 @@ public boolean dispatchNestedScroll(int dxConsumed, int dyConsumed,
 读到这份源代码，我一直忽略了坐标值细节的一针一眼的计算。因为比较费时间，费精力。有兴趣的朋友私下去感受就好。<br><br>
 当然，滑动时候，跟CoordinatorLayout和Behavior打交道还有其它一些函数，比如stopNestedScroll和dispatchNestedFling等。主要的一个逻辑，都是类似的，就是通过mChildHelper找到mNestedScrollingParent，然后再由mNestedScrollingParent找到对应子View的Behavior。限于篇幅问题，此处不再赘述了。<br>
 
-### 总结
+###5. 总结
 一个View(或其子View)一旦不消费某一个MotionEvent事件，该View便再也捕获不到这个后续的MotionEvent序列。这样就使得“视差”这类的交互逻辑无法实现。<br><br>
 试想，如果是我们自身去设计这个“视差”，以AppbarLayout的Behavior效果为例，常规思路应该是这样的：<br><br>
 (1)当我们向上滑动视图的时候，MotionEvent由CoordinatorLayout去消费，这个时候NestedScrollView内部并没有滑动，只是CoordinatorLayout实现了位移。<br><br>
